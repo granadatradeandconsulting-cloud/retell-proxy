@@ -1,0 +1,181 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navigator Pro - Retell Call</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    }
+    .container {
+      background: white; border-radius: 20px; padding: 40px;
+      max-width: 500px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 { color: #1A237E; margin-bottom: 10px; font-size: 28px; }
+    .subtitle { color: #6B7280; margin-bottom: 30px; }
+    button {
+      width: 100%; padding: 16px; margin: 10px 0;
+      border: none; border-radius: 10px; font-size: 16px;
+      font-weight: 600; cursor: pointer; transition: all 0.3s;
+    }
+    .btn-primary { background: #2563EB; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #1D4ED8; transform: translateY(-2px); }
+    .btn-danger { background: #EF4444; color: white; }
+    .btn-danger:hover:not(:disabled) { background: #DC2626; }
+    .btn-danger:disabled, .btn-primary:disabled { 
+      background: #9CA3AF; cursor: not-allowed; transform: none;
+    }
+    #status {
+      background: #F3F4F6; padding: 20px; border-radius: 10px;
+      margin: 20px 0; min-height: 80px; font-family: monospace;
+      font-size: 14px; color: #1F2937; white-space: pre-wrap;
+    }
+    .success {
+      background: #D1FAE5; border-left: 4px solid #10B981;
+      padding: 12px; margin: 15px 0; border-radius: 6px; font-size: 14px;
+    }
+    .warning {
+      background: #FEF3C7; border-left: 4px solid #F59E0B;
+      padding: 12px; margin: 15px 0; border-radius: 6px; font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎯 Navigator Pro</h1>
+    <p class="subtitle">AI Voice Agent Test</p>
+    
+    <div id="sdkStatus" class="warning">⏳ Caricamento SDK...</div>
+    
+    <button id="startBtn" class="btn-primary" disabled>▶ Start Call</button>
+    <button id="endBtn" class="btn-danger" disabled>⏹ End Call</button>
+    
+    <div id="status">In attesa del SDK...</div>
+  </div>
+
+  <!-- Carica il bundle creato - URL relativo per funzionare ovunque -->
+  <script src="./retell-sdk-bundle.js"></script>
+  
+  <script>
+    const sdkStatus = document.getElementById('sdkStatus');
+    const status = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const endBtn = document.getElementById('endBtn');
+    let retellClient = null;
+
+    // URL API - usa window.location.origin per funzionare sia in locale che in produzione
+    const API_URL = window.location.origin;
+
+    // Aspetta che il SDK sia caricato
+    window.addEventListener('load', () => {
+      console.log('Environment:', API_URL);
+      
+      const RetellWebClient = window.RetellSDK?.RetellWebClient || window.RetellWebClient;
+      
+      if (RetellWebClient) {
+        window.RetellWebClient = RetellWebClient;
+        sdkStatus.className = 'success';
+        sdkStatus.textContent = '✓ SDK Retell caricato con successo';
+        status.textContent = 'Pronto! Clicca "Start Call" per iniziare.';
+        startBtn.disabled = false;
+        console.log('✓ RetellWebClient disponibile');
+      } else {
+        sdkStatus.className = 'warning';
+        sdkStatus.textContent = '✗ Errore: RetellWebClient non trovato';
+        status.textContent = 'Errore caricamento SDK - Controlla console';
+        console.error('RetellWebClient non disponibile');
+      }
+    });
+
+    async function startCall() {
+      try {
+        status.textContent = '📞 Creazione chiamata...';
+        startBtn.disabled = true;
+        
+        // Usa URL relativo per funzionare ovunque
+        const response = await fetch(`${API_URL}/create-call`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Errore server: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('✓ Token ricevuto');
+        
+        if (!data.access_token) {
+          throw new Error('Access token non ricevuto');
+        }
+        
+        status.textContent = '🔌 Connessione a Retell AI...';
+        
+        retellClient = new RetellWebClient();
+        
+        retellClient.on('call_started', () => {
+          status.textContent = '✓ Chiamata avviata!\n🎤 Puoi parlare ora...';
+          endBtn.disabled = false;
+          console.log('✓ Call started');
+        });
+        
+        retellClient.on('call_ended', () => {
+          status.textContent = '📴 Chiamata terminata.';
+          startBtn.disabled = false;
+          endBtn.disabled = true;
+          console.log('Call ended');
+        });
+        
+        retellClient.on('error', (error) => {
+          status.textContent = '❌ Errore:\n' + error.message;
+          startBtn.disabled = false;
+          endBtn.disabled = true;
+          console.error('Call error:', error);
+        });
+        
+        retellClient.on('agent_start_talking', () => {
+          status.textContent = '🔊 Assistente sta parlando...';
+        });
+        
+        retellClient.on('agent_stop_talking', () => {
+          status.textContent = '🎤 Il tuo turno!';
+        });
+        
+        retellClient.on('update', (update) => {
+          if (update.transcript) {
+            console.log('Transcript:', update.transcript);
+          }
+        });
+        
+        await retellClient.startCall({
+          accessToken: data.access_token,
+          sampleRate: 24000
+        });
+        
+        console.log('✓ Call initialization complete');
+        
+      } catch (error) {
+        status.textContent = '❌ Errore:\n' + error.message;
+        startBtn.disabled = false;
+        console.error('Error:', error);
+      }
+    }
+
+    async function endCall() {
+      if (retellClient) {
+        status.textContent = '⏹️ Chiusura chiamata...';
+        await retellClient.stopCall();
+      }
+    }
+
+    startBtn.onclick = startCall;
+    endBtn.onclick = endCall;
+  </script>
+</body>
+</html>

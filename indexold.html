@@ -1,0 +1,127 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navigator Pro - Retell Call</title>
+  <script src="https://unpkg.com/retell-client-js-sdk@latest/dist/index.umd.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    }
+    .container {
+      background: white; border-radius: 20px; padding: 40px;
+      max-width: 500px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 { color: #1A237E; margin-bottom: 10px; font-size: 28px; }
+    .subtitle { color: #6B7280; margin-bottom: 30px; }
+    button {
+      width: 100%; padding: 16px; margin: 10px 0;
+      border: none; border-radius: 10px; font-size: 16px;
+      font-weight: 600; cursor: pointer; transition: all 0.3s;
+    }
+    .btn-primary { background: #2563EB; color: white; }
+    .btn-primary:hover { background: #1D4ED8; transform: translateY(-2px); }
+    .btn-danger { background: #EF4444; color: white; }
+    .btn-danger:hover { background: #DC2626; }
+    .btn-danger:disabled { background: #9CA3AF; cursor: not-allowed; }
+    #status {
+      background: #F3F4F6; padding: 20px; border-radius: 10px;
+      margin: 20px 0; min-height: 80px; font-family: monospace;
+      font-size: 14px; color: #1F2937;
+    }
+    .info { background: #DBEAFE; border-left: 4px solid #2563EB; padding: 12px; margin: 15px 0; border-radius: 6px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Navigator Pro</h1>
+    <p class="subtitle">AI Voice Agent Test</p>
+    
+    <div class="info">
+      Server proxy attivo - SDK caricato correttamente senza CSP
+    </div>
+    
+    <button id="startBtn" class="btn-primary">Start Call</button>
+    <button id="endBtn" class="btn-danger" disabled>End Call</button>
+    
+    <div id="status">Ready to start...</div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const endBtn = document.getElementById('endBtn');
+    const status = document.getElementById('status');
+    let retellClient = null;
+
+    async function startCall() {
+      try {
+        status.textContent = 'Creating call...';
+        startBtn.disabled = true;
+        
+        const response = await fetch('http://localhost:3000/create-call', {
+          method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (!data.access_token) {
+          throw new Error('No access token received');
+        }
+        
+        status.textContent = 'Connecting...';
+        
+        retellClient = new RetellWebClient();
+        
+        retellClient.on('call_started', () => {
+          status.textContent = 'Call started! Speak now...';
+          endBtn.disabled = false;
+        });
+        
+        retellClient.on('call_ended', () => {
+          status.textContent = 'Call ended.';
+          startBtn.disabled = false;
+          endBtn.disabled = true;
+        });
+        
+        retellClient.on('error', (error) => {
+          status.textContent = 'Error: ' + error.message;
+          startBtn.disabled = false;
+          endBtn.disabled = true;
+        });
+        
+        retellClient.on('agent_start_talking', () => {
+          status.textContent = 'Agent speaking...';
+        });
+        
+        retellClient.on('agent_stop_talking', () => {
+          status.textContent = 'Your turn to speak!';
+        });
+        
+        await retellClient.startCall({
+          accessToken: data.access_token,
+          sampleRate: 24000,
+          emitRawAudioSamples: false
+        });
+        
+      } catch (error) {
+        status.textContent = 'Error: ' + error.message;
+        startBtn.disabled = false;
+        console.error(error);
+      }
+    }
+
+    async function endCall() {
+      if (retellClient) {
+        await retellClient.stopCall();
+      }
+    }
+
+    startBtn.onclick = startCall;
+    endBtn.onclick = endCall;
+  </script>
+</body>
+</html>
